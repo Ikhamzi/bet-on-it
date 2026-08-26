@@ -7,6 +7,11 @@ import {
   serverTimestamp,
   arrayUnion,
   runTransaction,
+  collection,
+  addDoc,
+  query,
+  orderBy,
+  limitToLast,
 } from "firebase/firestore";
 import { customAlphabet } from "nanoid/non-secure";
 import { db } from "../firebase";
@@ -43,11 +48,21 @@ export function gameLimits(game: GameKind) {
     : { minPlayers: 2, maxPlayers: 4 };
 }
 
+/** Exact seat counts a host can pick when creating a Ludo room. */
+export const LUDO_PLAYER_OPTIONS = [2, 3, 4, 5] as const;
+
 export async function createRoom(
   game: GameKind,
-  host: { uid: string; name: string; photoURL: string | null }
+  host: { uid: string; name: string; photoURL: string | null },
+  options?: { playerCount?: number }
 ): Promise<string> {
-  const { minPlayers, maxPlayers } = gameLimits(game);
+  let { minPlayers, maxPlayers } = gameLimits(game);
+  if (game === "ludo" && options?.playerCount) {
+    // Host picked an exact seat count — the room fills to exactly that many
+    // and won't accept extra joiners.
+    minPlayers = options.playerCount;
+    maxPlayers = options.playerCount;
+  }
   const roomCode = makeCode();
   const room: Room = {
     roomCode,
@@ -147,5 +162,41 @@ export async function leaveRoom(roomCode: string, uid: string): Promise<void> {
     const room = snap.data() as Room;
     const players = room.players.filter((p) => p.uid !== uid);
     tx.update(ref, { players, updatedAt: serverTimestamp() });
+  });
+}
+
+export interface ChatMessage {
+  id: string;
+  uid: string;
+  name: string;
+  text: string;
+  createdAt?: any;
+}
+
+const CHAT_HISTORY_LIMIT = 50;
+
+export async function sendMessage(
+  roomCode: string,
+  message: { uid: string; name: string; text: string }
+): Promise<void> {
+  const text = message.text.trim().slice(0, 300);
+  if (!text) return;
+  const messagesRef = collection(db, "rooms", roomCode.toUpperCase(), "messages");
+  await addDoc(messagesRef, {
+    uid: message.uid,
+    name: message.name,
+    text,
+    createdAt: serverTimestamp(),
+  });
+}
+
+export function subscribeMessages(
+  roomCode: string,
+  cb: (messages: ChatMessage[]) => void
+): () => void {
+  const messagesRef = collection(db, "rooms", roomCode.toUpperCase(), "messages");
+  const q = query(messagesRef, orderBy("createdAt", "asc"), limitToLast(CHAT_HISTORY_LIMIT));
+  return onSnapshot(q, (snap) => {
+    cb(snap.docs.map((d) => ({ id: d.id, ...d.data() } as ChatMessage)));
   });
 }

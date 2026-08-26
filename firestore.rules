@@ -18,6 +18,20 @@ service cloud.firestore {
                     && request.resource.data.hostUid == request.auth.uid;
       allow update: if request.auth != null;
       allow delete: if false;
+
+      // In-game chat messages. Anyone signed in can read a room's chat
+      // (same trust model as the room doc itself); a message can only be
+      // authored as your own uid, and messages are immutable once sent.
+      match /messages/{messageId} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null
+                      && request.resource.data.uid == request.auth.uid
+                      && request.resource.data.text is string
+                      && request.resource.data.text.size() > 0
+                      && request.resource.data.text.size() <= 300;
+        allow update: if false;
+        allow delete: if false;
+      }
     }
   }
 }

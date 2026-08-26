@@ -29,3 +29,11 @@ jobs:
           firebaseServiceAccount: "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}"
           projectId: bet-on-it-781e1
           channelId: live
+
+      - name: Deploy Firestore rules
+        run: |
+          echo "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+          npx firebase-tools deploy --only firestore:rules --project bet-on-it-781e1 --non-interactive
+        env:
+          FIREBASE_SERVICE_ACCOUNT: "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}"
+          GOOGLE_APPLICATION_CREDENTIALS: /tmp/firebase-sa.json

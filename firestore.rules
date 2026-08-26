@@ -1,0 +1,23 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Game rooms for "Bet on It" (Ludo / Snakes & Ladders).
+    // Rooms are identified by a short random join code, not by user id, so
+    // read access simply requires being signed in. Writes require being
+    // signed in too; because Firestore security rules cannot cheaply
+    // validate "is this uid inside the players array at the right turn"
+    // without duplicating full game-engine logic in rules language, trust
+    // for in-game legality is enforced client-side by the shared game
+    // engine (src/game-engine). This is appropriate for a free, no-stakes
+    // casual game with no real money or sensitive data involved.
+    match /rooms/{roomCode} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+                    && request.resource.data.hostUid == request.auth.uid;
+      allow update: if request.auth != null;
+      allow delete: if false;
+    }
+  }
+}

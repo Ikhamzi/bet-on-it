@@ -3,12 +3,21 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/types";
 import { useAuth } from "../auth/AuthContext";
-import { Room, pushGameState, subscribeRoom, leaveRoom } from "../services/rooms";
+import {
+  Room,
+  pushGameState,
+  subscribeRoom,
+  leaveRoom,
+  ChatMessage,
+  sendMessage,
+  subscribeMessages,
+} from "../services/rooms";
 import { theme, PLAYER_COLORS } from "../theme/colors";
 import Dice from "../components/Dice";
 import PlayerBadge from "../components/PlayerBadge";
 import LudoBoard from "../components/LudoBoard";
 import SnakesLaddersBoard from "../components/SnakesLaddersBoard";
+import ChatPanel from "../components/ChatPanel";
 import {
   LudoState,
   getLegalMoves as getLudoLegalMoves,
@@ -29,11 +38,25 @@ export default function GameScreen({ route, navigation }: Props) {
   const { user } = useAuth();
   const [room, setRoom] = useState<Room | null>(null);
   const [rolling, setRolling] = useState(false);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [seenCount, setSeenCount] = useState(0);
 
   useEffect(() => {
     const unsub = subscribeRoom(roomCode, setRoom);
     return unsub;
   }, [roomCode]);
+
+  useEffect(() => {
+    const unsub = subscribeMessages(roomCode, setMessages);
+    return unsub;
+  }, [roomCode]);
+
+  useEffect(() => {
+    if (chatOpen) setSeenCount(messages.length);
+  }, [chatOpen, messages.length]);
+
+  const unreadCount = chatOpen ? 0 : Math.max(0, messages.length - seenCount);
 
   const isLudo = room?.game === "ludo";
   const gameState = room?.gameState as (LudoState | SLState | null);
@@ -93,11 +116,16 @@ export default function GameScreen({ route, navigation }: Props) {
     navigation.popToTop();
   };
 
+  const handleSendMessage = (text: string) => {
+    sendMessage(roomCode, { uid: user.uid, name: user.displayName ?? "Player", text });
+  };
+
   const winner = room.players.find((p) => p.uid === gameState.winnerUid);
 
   const ludoLegalMoves = isLudo && isMyTurn ? getLudoLegalMoves(gameState as LudoState) : [];
 
   return (
+    <View style={{ flex: 1 }}>
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>{isLudo ? "Ludo" : "Snakes & Ladders"}</Text>
@@ -177,6 +205,25 @@ export default function GameScreen({ route, navigation }: Props) {
           ))}
       </ScrollView>
     </ScrollView>
+
+      <Pressable style={styles.chatFab} onPress={() => setChatOpen(true)}>
+        <Text style={styles.chatFabText}>💬</Text>
+        {unreadCount > 0 && (
+          <View style={styles.chatBadge}>
+            <Text style={styles.chatBadgeText}>{unreadCount > 9 ? "9+" : unreadCount}</Text>
+          </View>
+        )}
+      </Pressable>
+
+      {chatOpen && (
+        <ChatPanel
+          messages={messages}
+          myUid={user.uid}
+          onSend={handleSendMessage}
+          onClose={() => setChatOpen(false)}
+        />
+      )}
+    </View>
   );
 }
 
@@ -211,4 +258,36 @@ const styles = StyleSheet.create({
   winnerText: { color: "#0F1220", fontWeight: "800" },
   log: { width: "100%", maxHeight: 120, backgroundColor: theme.surface, borderRadius: 12, padding: 10 },
   logLine: { color: theme.textMuted, fontSize: 11, marginBottom: 2 },
+  chatFab: {
+    position: "absolute",
+    right: 20,
+    bottom: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: theme.accent,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  chatFabText: { fontSize: 24 },
+  chatBadge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: theme.danger,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: theme.bg,
+  },
+  chatBadgeText: { color: "#fff", fontSize: 10, fontWeight: "800" },
 });
